@@ -1,8 +1,9 @@
 """Trino MCP Server - Main server implementation."""
 
+import argparse
 import logging
 import sys
-from typing import Annotated
+from typing import Annotated, Optional
 
 import sqlglot
 from sqlglot.expressions import (
@@ -35,17 +36,100 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize configuration and client
-logger.info("Loading Trino configuration...")
-config = load_config()
-logger.info(f"Connected to Trino at {config.host}:{config.port}")
-client = TrinoClient(config)
+# Module-level config and client — initialized in main() after CLI args are parsed.
+# When imported as a library (e.g. in tests), callers may set these directly.
+config = None
+client = None
 
 # Initialize MCP server
 mcp = FastMCP(
     name="Trino MCP Server",
     instructions="A simple Model Context Protocol server for Trino query engine with OAuth support.",
 )
+
+
+# ---------------------------------------------------------------------------
+# CLI argument parsing
+# ---------------------------------------------------------------------------
+
+# Mapping from CLI flag dest → environment variable name.
+_CLI_TO_ENV = {
+    "trino_host": "TRINO_HOST",
+    "trino_port": "TRINO_PORT",
+    "trino_user": "TRINO_USER",
+    "trino_catalog": "TRINO_CATALOG",
+    "trino_schema": "TRINO_SCHEMA",
+    "trino_http_scheme": "TRINO_HTTP_SCHEME",
+    "auth_method": "AUTH_METHOD",
+    "trino_password": "TRINO_PASSWORD",
+    "azure_scope": "AZURE_SCOPE",
+    "azure_client_id": "AZURE_CLIENT_ID",
+    "azure_client_secret": "AZURE_CLIENT_SECRET",
+    "azure_tenant_id": "AZURE_TENANT_ID",
+    "allow_write_queries": "ALLOW_WRITE_QUERIES",
+    "custom_watermark": "TRINO_MCP_CUSTOM_WATERMARK",
+}
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    """Build the CLI argument parser.
+
+    Every flag is optional. When provided, the value is passed as an override
+    to ``load_config()``, taking precedence over env vars and ``.env``.
+    """
+    parser = argparse.ArgumentParser(
+        prog="trino-mcp",
+        description="Trino MCP Server — Model Context Protocol server for Trino.",
+    )
+
+    # Connection
+    parser.add_argument("--trino-host", help="Trino host (default: localhost)")
+    parser.add_argument("--trino-port", help="Trino port (default: 8080)")
+    parser.add_argument("--trino-user", help="Trino user (default: trino)")
+    parser.add_argument("--trino-catalog", help="Default catalog")
+    parser.add_argument("--trino-schema", help="Default schema")
+    parser.add_argument(
+        "--trino-http-scheme", help="HTTP scheme: http or https (default: http)"
+    )
+
+    # Authentication
+    parser.add_argument(
+        "--auth-method",
+        help="Authentication method: PASSWORD, OAUTH2, AZURE_SPN, or NONE (default: PASSWORD)",
+    )
+    parser.add_argument("--trino-password", help="Password for PASSWORD auth")
+    parser.add_argument("--azure-scope", help="Azure token scope for AZURE_SPN auth")
+    parser.add_argument("--azure-client-id", help="Azure client ID for AZURE_SPN auth")
+    parser.add_argument(
+        "--azure-client-secret", help="Azure client secret for AZURE_SPN auth"
+    )
+    parser.add_argument(
+        "--azure-tenant-id", help="Azure tenant ID for AZURE_SPN auth"
+    )
+
+    # Permissions
+    parser.add_argument(
+        "--allow-write-queries",
+        help="Allow write queries: true/false (default: false)",
+    )
+
+    # Watermark
+    parser.add_argument(
+        "--custom-watermark",
+        help="JSON object for custom query watermark (TRINO_MCP_CUSTOM_WATERMARK)",
+    )
+
+    return parser
+
+
+def _cli_args_to_overrides(args: argparse.Namespace) -> dict:
+    """Convert non-None CLI values into an overrides dict for ``load_config()``."""
+    overrides = {}
+    for dest, env_var in _CLI_TO_ENV.items():
+        value = getattr(args, dest, None)
+        if value is not None:
+            overrides[env_var] = value
+    return overrides
 
 
 def _is_read_only_query(query: str) -> bool:
@@ -391,8 +475,31 @@ def get_table_stats(
         return f"Error getting table stats: {str(e)}"
 
 
+def _init_config(overrides: Optional[dict] = None) -> None:
+    """Initialise the global ``config`` and ``client``.
+
+    Args:
+        overrides: Optional dict of env-var-name → value that takes
+                   precedence over environment variables and ``.env``.
+    """
+    global config, client
+    logger.info("Loading Trino configuration...")
+    config = load_config(overrides=overrides)
+    logger.info(f"Connected to Trino at {config.host}:{config.port}")
+    client = TrinoClient(config)
+
+
 def main():
     """Main entry point for the server."""
+    global config, client
+
+    # Parse CLI arguments into an overrides dict (no env mutation).
+    parser = _build_arg_parser()
+    args = parser.parse_args()
+    overrides = _cli_args_to_overrides(args)
+
+    _init_config(overrides)
+
     logger.info("Starting Trino MCP Server...")
     mcp.run()
     logger.info("Trino MCP Server stopped")

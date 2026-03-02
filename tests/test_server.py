@@ -1,6 +1,7 @@
 """Tests for MCP server module."""
 
 import os
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -510,10 +511,108 @@ def test_execute_query_query_error(mock_config, mock_client):
 
 
 @patch("trino_mcp.server.mcp")
-def test_main_calls_mcp_run(mock_mcp):
+@patch("trino_mcp.server._init_config")
+@patch("sys.argv", ["trino-mcp"])
+def test_main_calls_mcp_run(mock_init, mock_mcp):
     """Test main() calls mcp.run()."""
     from trino_mcp.server import main
 
     main()
 
+    mock_init.assert_called_once_with({})
     mock_mcp.run.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# CLI argument parsing tests
+# ---------------------------------------------------------------------------
+
+
+def test_build_arg_parser_no_args():
+    """Test _build_arg_parser parses empty args without error."""
+    from trino_mcp.server import _build_arg_parser
+
+    parser = _build_arg_parser()
+    args = parser.parse_args([])
+    # All values should be None when no flags are given
+    assert args.trino_host is None
+    assert args.auth_method is None
+
+
+def test_build_arg_parser_all_flags():
+    """Test _build_arg_parser parses all supported flags."""
+    from trino_mcp.server import _build_arg_parser
+
+    parser = _build_arg_parser()
+    args = parser.parse_args([
+        "--trino-host", "myhost",
+        "--trino-port", "443",
+        "--trino-user", "myuser",
+        "--trino-catalog", "delta",
+        "--trino-schema", "myschema",
+        "--trino-http-scheme", "https",
+        "--auth-method", "AZURE_SPN",
+        "--trino-password", "secret",
+        "--azure-scope", "api://xxx/.default",
+        "--azure-client-id", "cid",
+        "--azure-client-secret", "csec",
+        "--azure-tenant-id", "tid",
+        "--allow-write-queries", "true",
+        "--custom-watermark", '{"key": "val"}',
+    ])
+
+    assert args.trino_host == "myhost"
+    assert args.trino_port == "443"
+    assert args.trino_user == "myuser"
+    assert args.trino_catalog == "delta"
+    assert args.trino_schema == "myschema"
+    assert args.trino_http_scheme == "https"
+    assert args.auth_method == "AZURE_SPN"
+    assert args.trino_password == "secret"
+    assert args.azure_scope == "api://xxx/.default"
+    assert args.azure_client_id == "cid"
+    assert args.azure_client_secret == "csec"
+    assert args.azure_tenant_id == "tid"
+    assert args.allow_write_queries == "true"
+    assert args.custom_watermark == '{"key": "val"}'
+
+
+def test_cli_args_to_overrides():
+    """Test _cli_args_to_overrides returns dict of non-None values mapped to env var names."""
+    from trino_mcp.server import _build_arg_parser, _cli_args_to_overrides
+
+    parser = _build_arg_parser()
+    args = parser.parse_args(["--trino-host", "myhost", "--auth-method", "NONE"])
+
+    overrides = _cli_args_to_overrides(args)
+
+    assert overrides == {"TRINO_HOST": "myhost", "AUTH_METHOD": "NONE"}
+
+
+def test_cli_args_to_overrides_empty():
+    """Test _cli_args_to_overrides returns empty dict when no flags given."""
+    from trino_mcp.server import _build_arg_parser, _cli_args_to_overrides
+
+    parser = _build_arg_parser()
+    args = parser.parse_args([])
+
+    overrides = _cli_args_to_overrides(args)
+
+    assert overrides == {}
+
+
+@patch("trino_mcp.server.mcp")
+@patch("trino_mcp.server._init_config")
+@patch("sys.argv", ["trino-mcp", "--trino-host", "cli-host", "--auth-method", "NONE"])
+def test_main_cli_args_passed_as_overrides(mock_init, mock_mcp):
+    """Test main() passes CLI args as overrides to _init_config (no env mutation)."""
+    from trino_mcp.server import main
+
+    old_host = os.environ.get("TRINO_HOST")
+    main()
+
+    # _init_config should receive the overrides dict
+    mock_init.assert_called_once_with({"TRINO_HOST": "cli-host", "AUTH_METHOD": "NONE"})
+    mock_mcp.run.assert_called_once()
+    # Environment should NOT have been mutated
+    assert os.environ.get("TRINO_HOST") == old_host

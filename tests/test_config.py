@@ -6,6 +6,7 @@ import os
 from unittest.mock import patch, MagicMock
 
 import pytest
+import trino.auth
 
 from trino_mcp.config import (
     AzureAutoRefreshAuthentication,
@@ -71,6 +72,48 @@ def test_load_config_basic():
     assert config.user == "test-user"
     assert config.http_scheme == "https"
     assert config.auth is None
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "env-host",
+        "TRINO_PORT": "9999",
+        "TRINO_USER": "env-user",
+        "AUTH_METHOD": "NONE",
+    },
+)
+def test_load_config_overrides_take_precedence():
+    """Test that overrides dict takes precedence over env vars."""
+    config = load_config(overrides={
+        "TRINO_HOST": "override-host",
+        "TRINO_USER": "override-user",
+    })
+
+    assert config.host == "override-host"
+    assert config.user == "override-user"
+    # Non-overridden values still come from env
+    assert config.port == 9999
+
+
+@patch.dict(
+    os.environ,
+    {
+        "AUTH_METHOD": "NONE",
+    },
+    clear=True,
+)
+def test_load_config_overrides_without_env():
+    """Test overrides work even when env vars are not set."""
+    config = load_config(overrides={
+        "TRINO_HOST": "cli-host",
+        "TRINO_PORT": "443",
+        "TRINO_USER": "cli-user",
+    })
+
+    assert config.host == "cli-host"
+    assert config.port == 443
+    assert config.user == "cli-user"
 
 
 @patch.dict(
@@ -422,6 +465,7 @@ def test_load_config_custom_watermark_invalid_json():
         load_config()
 
 
+@patch("trino_mcp.config.load_dotenv")
 @patch.dict(
     os.environ,
     {
@@ -430,8 +474,9 @@ def test_load_config_custom_watermark_invalid_json():
         "TRINO_USER": "trino",
         "AUTH_METHOD": "NONE",
     },
+    clear=True,
 )
-def test_load_config_no_custom_watermark():
+def test_load_config_no_custom_watermark(mock_load_dotenv):
     """Test loading configuration without custom watermark."""
     config = load_config()
 
@@ -611,6 +656,38 @@ def test_load_config_oauth2_enforces_https_and_port():
     assert config.port == 443
     assert config.additional_kwargs["http_headers"] == {"X-Client-Info": "secured"}
     assert config.auth is not None
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "trino.example.com",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "OAUTH2",
+    },
+)
+def test_load_config_oauth2_redirect_handler_uses_stderr(capsys):
+    """Test that OAuth2 redirect handler writes to stderr, not stdout.
+
+    The MCP server communicates over stdio. If the Trino OAuth2
+    ConsoleRedirectHandler prints to stdout, it corrupts the MCP protocol.
+    The custom handler must write to stderr instead.
+    """
+    config = load_config()
+
+    # Extract the redirect handler from the OAuth2Authentication object
+    auth = config.auth
+    assert isinstance(auth, trino.auth.OAuth2Authentication)
+
+    # Trigger the redirect handler with a fake URL
+    auth._redirect_auth_url("https://example.com/oauth2/authorize?code=test")
+
+    captured = capsys.readouterr()
+    # Nothing should be written to stdout
+    assert captured.out == "", f"OAuth2 handler wrote to stdout: {captured.out!r}"
+    # The auth URL should appear on stderr
+    assert "https://example.com/oauth2/authorize?code=test" in captured.err
 
 
 # ---------------------------------------------------------------------------

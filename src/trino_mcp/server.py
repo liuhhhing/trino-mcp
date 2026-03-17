@@ -88,34 +88,34 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
 
     # Connection
-    parser.add_argument("--trino-host", help="Trino host (default: localhost)")
-    parser.add_argument("--trino-port", help="Trino port (default: 8080)")
-    parser.add_argument("--trino-user", help="Trino user (default: trino)")
-    parser.add_argument("--trino-catalog", help="Default catalog")
-    parser.add_argument("--trino-schema", help="Default schema")
+    parser.add_argument("--trino-host", help="Trino host (default: localhost) (TRINO_HOST)")
+    parser.add_argument("--trino-port", help="Trino port (default: 8080) (TRINO_PORT)")
+    parser.add_argument("--trino-user", help="Trino user (default: trino) (TRINO_USER)")
+    parser.add_argument("--trino-catalog", help="Default catalog (TRINO_CATALOG)")
+    parser.add_argument("--trino-schema", help="Default schema (TRINO_SCHEMA)")
     parser.add_argument(
-        "--trino-http-scheme", help="HTTP scheme: http or https (default: http)"
+        "--trino-http-scheme", help="HTTP scheme: http or https (default: http) (TRINO_HTTP_SCHEME)"
     )
 
     # Authentication
     parser.add_argument(
         "--auth-method",
-        help="Authentication method: PASSWORD, OAUTH2, AZURE_SPN, or NONE (default: PASSWORD)",
+        help="Authentication method: PASSWORD, OAUTH2, AZURE_SPN, or NONE (default: PASSWORD) (AUTH_METHOD)",
     )
-    parser.add_argument("--trino-password", help="Password for PASSWORD auth")
-    parser.add_argument("--azure-scope", help="Azure token scope for AZURE_SPN auth")
-    parser.add_argument("--azure-client-id", help="Azure client ID for AZURE_SPN auth")
+    parser.add_argument("--trino-password", help="Password for PASSWORD auth (TRINO_PASSWORD)")
+    parser.add_argument("--azure-scope", help="Azure token scope for AZURE_SPN auth (AZURE_SCOPE)")
+    parser.add_argument("--azure-client-id", help="Azure client ID for AZURE_SPN auth (AZURE_CLIENT_ID)")
     parser.add_argument(
-        "--azure-client-secret", help="Azure client secret for AZURE_SPN auth"
+        "--azure-client-secret", help="Azure client secret for AZURE_SPN auth (AZURE_CLIENT_SECRET)"
     )
     parser.add_argument(
-        "--azure-tenant-id", help="Azure tenant ID for AZURE_SPN auth"
+        "--azure-tenant-id", help="Azure tenant ID for AZURE_SPN auth (AZURE_TENANT_ID)"
     )
 
     # Permissions
     parser.add_argument(
         "--allow-write-queries",
-        help="Allow write queries: true/false (default: false)",
+        help="Allow write queries: true/false (default: false) (ALLOW_WRITE_QUERIES)",
     )
 
     # Watermark

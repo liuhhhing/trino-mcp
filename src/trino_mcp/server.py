@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import logging
+import os
 import sys
 from typing import Annotated, Optional
 
@@ -14,8 +15,10 @@ from .client import QueryTimeoutError, TrinoClient
 from .utils import is_read_only_query as _is_read_only_query
 
 # Setup logging
+_log_level_name = os.environ.get("TRINO_MCP_LOG_LEVEL", "DEBUG").upper()
+_log_level = getattr(logging, _log_level_name, logging.DEBUG)
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=_log_level,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler(sys.stderr)],
 )

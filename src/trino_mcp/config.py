@@ -148,7 +148,11 @@ def load_config(overrides: Optional[dict] = None) -> TrinoConfig:
 
     host = _get("TRINO_HOST", "localhost")
     port = int(_get("TRINO_PORT", "8080"))
-    user = _get("TRINO_USER", "trino")
+    # Default user to None for OAUTH2 so Trino derives identity from the OAuth token.
+    # Setting TRINO_USER with OAUTH2 causes PERMISSION_DENIED on silver tables because
+    # it overrides the token-derived identity. For other auth methods default to "trino".
+    _auth_method_peek = _get("AUTH_METHOD", "PASSWORD").upper()
+    user = _get("TRINO_USER", None if _auth_method_peek == "OAUTH2" else "trino")
     catalog = _get("TRINO_CATALOG")
     schema = _get("TRINO_SCHEMA")
     http_scheme = _get("TRINO_HTTP_SCHEME", "http")
@@ -156,6 +160,11 @@ def load_config(overrides: Optional[dict] = None) -> TrinoConfig:
     # Setup authentication based on available credentials
     auth = None
     additional_kwargs = {}
+
+    # TRINO_VERIFY=false disables TLS certificate verification (e.g. self-signed certs).
+    trino_verify_raw = _get("TRINO_VERIFY", "true").lower()
+    if trino_verify_raw in ("false", "0", "no"):
+        additional_kwargs["verify"] = False
 
     auth_method = _get("AUTH_METHOD", "PASSWORD").upper()
     if auth_method == "PASSWORD":

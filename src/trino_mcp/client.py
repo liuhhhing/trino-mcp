@@ -341,7 +341,7 @@ class TrinoClient:
         if not catalog_name or not schema_name:
             raise ValueError("Both catalog and schema must be specified")
 
-        return self.execute_query_json(f"DESCRIBE {catalog_name}.{schema_name}.{table}")
+        return self.execute_query_json(f'DESCRIBE {catalog_name}."{schema_name}".{table}')
 
     def show_create_table(self, catalog: str, schema: str, table: str) -> str:
         """Show the CREATE TABLE statement for a table."""
@@ -352,7 +352,7 @@ class TrinoClient:
             raise ValueError("Both catalog and schema must be specified")
 
         data = self.execute_query(
-            f"SHOW CREATE TABLE {catalog_name}.{schema_name}.{table}"
+            f'SHOW CREATE TABLE {catalog_name}."{schema_name}".{table}'
         )
         if isinstance(data, dict):
             # Query didn't return results (unexpected for SHOW CREATE TABLE)
@@ -370,5 +370,5 @@ class TrinoClient:
             raise ValueError("Both catalog and schema must be specified")
 
         return self.execute_query_json(
-            f"SHOW STATS FOR {catalog_name}.{schema_name}.{table}"
+            f'SHOW STATS FOR {catalog_name}."{schema_name}".{table}'
         )
